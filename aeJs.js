@@ -1,5 +1,6 @@
-/*
+/**
 * @author           : Romain Claveau
+* @description      : Implentation of AES algorithm in Javascript
 * @license          : Apache 2.0
 * @documentation    : - http://asmaes.sourceforge.net/rijndael/rijndaelImplementation.pdf
 *                     - http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
@@ -41,6 +42,20 @@ var aes =
         0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
     ],
     
+    rCon: [
+        [0x00, 0x00, 0x00, 0x00],
+        [0x01, 0x00, 0x00, 0x00],
+        [0x02, 0x00, 0x00, 0x00],
+        [0x04, 0x00, 0x00, 0x00],
+        [0x08, 0x00, 0x00, 0x00],
+        [0x10, 0x00, 0x00, 0x00],
+        [0x20, 0x00, 0x00, 0x00],
+        [0x40, 0x00, 0x00, 0x00],
+        [0x80, 0x00, 0x00, 0x00],
+        [0x1b, 0x00, 0x00, 0x00],
+        [0x36, 0x00, 0x00, 0x00]
+    ],
+    
     /**
     * @name         : AES Cipher function
     * @description  : Encryption of "input" state using Rijndael algorithm
@@ -52,54 +67,111 @@ var aes =
     cipher: function(input, w)
     {
         // Number of round (depend of key size) : 10 (128-bits key) - 12 (192-bits key) - 14 (256-bits key)
-        var Nr = w.length / Nb - 1;
+        var Nr = w.length / aes.Nb - 1;
         
         // Initialisation of the State array
         var state = [[], [], [], []];
         
         // Fill State array with input content [§3.4]
-        for(var i = 0; i < 4 * Nb; i++)
+        for(var i = 0; i < 4 * aes.Nb; i++)
         {
             state[i % 4][Math.floor(i / 4)] = input[i];
         }
         
+        console.log(state);
+        
         // First AddRoundKey() transformation [§5.1.4]
-        state = aes.addRoundKey(state, w, 0, Nb);
+        state = aes.addRoundKey(state, w, 0, aes.Nb);
         
         // Beginning of the loop of transformations
         for(var round = 1; round < Nr; round++)
         {
             // SubBytes() transformation [§5.1.1]
-            state = aes.subBytes(state, Nb);
+            state = aes.subBytes(state, aes.Nb);
             
             // ShiftRows() transformation [§5.1.2]
-            state = aes.shiftRows(state, Nb);
+            state = aes.shiftRows(state, aes.Nb);
             
             // MixColumns() transformation [§5.1.3]
-            state = aes.mixColumns(state, Nb);
+            state = aes.mixColumns(state, aes.Nb);
             
             // Other AddRoundKey() transformation [§5.1.4]
-            state = aes.addRoundKey(state, w, round, Nb);
+            state = aes.addRoundKey(state, w, round, aes.Nb);
         }
         
         // Final SubBytes() transformation [§5.1.1]
-        state = aes.subBytes(state, Nb);
+        state = aes.subBytes(state, aes.Nb);
         
         // Final ShiftRows() transformation [§5.1.2]
-        state = aes.shiftRows(state, Nb);
+        state = aes.shiftRows(state, aes.Nb);
         
         // Final AddRoundKey() transformation [§5.1.4]
-        state = aes.addRoundKey(state, w, Nr, Nb);
+        state = aes.addRoundKey(state, w, Nr, aes.Nb);
         
         // Converting the State array before returning it
-        var out = new Array(4 * Nb);
+        var out = new Array(4 * aes.Nb);
         
-        for(var i = 0; i < 4 * Nb; i++)
+        for(var i = 0; i < 4 * aes.Nb; i++)
         {
             out[i] = state[i % 4][Math.floor(i/4)];
         }
         
         return out;
+    },
+    
+    /**
+    * @name         : KeyExpansion transformation
+    * @description  : AES takes the Cipher Key and performs Key Expansion routine to generate a key schedule
+    * @section      : §5.2
+    * @params       : key[Nb * Nk]  : Cipher Key array
+    * @returns      : w[Nb] : Key Expansion
+    */
+    keyExpansion: function(key)
+    {
+        var temp = new Array(4);
+        var Nk = key.length / 4;
+        var Nr = Nk + 6;
+        var w = new Array(aes.Nb * (Nr + 1));
+        
+        console.log("Nk : " + Nk);
+        console.log("Nr : " + Nr);
+        console.log("Nb : " + aes.Nb);
+        
+        for(var i = 0; i < Nk; i++)
+        {
+            w[i] = [key[4 * i], key[4 * i + 1], key[4 * i + 2], key[4 * i + 3]];
+        }
+        
+        for(var i = Nk; i < (aes.Nb * (Nr + 1)); i++)
+        {
+            w[i] = new Array(4);
+            
+            for(var a = 0; a < 4; a++)
+            {
+                temp[a] = w[i - 1][a];
+            }
+            
+            if(i % Nk == 0)
+            {
+                temp = aes.subWord(aes.rotWord(temp));
+                
+                for(var a = 0; a < 4; a++)
+                {
+                    temp[a] ^= aes.rCon[i / Nk][a];
+                }
+            }
+            else if(Nk > 6 && i % Nk == 4)
+            {
+                temp = aes.subWord(temp);
+            }
+            
+            for(var a = 0; a < 4; a++)
+            {
+                w[i][a] = w[i - Nk][a] ^ temp[a];
+            }
+        }
+        
+        return w;
     },
     
     /**
@@ -114,12 +186,12 @@ var aes =
     */
     addRoundKey: function(state, w, round, Nb)
     {
-        for(var a = 0; a < 4; a++)
+        for(var row = 0; row < 4; row++)
         {
-            for(var b = 0; b < Nb; b++)
+            for(var col = 0; col < Nb; col++)
             {
                 // XOR operation (`^` symbolize the XOR operation)
-                state[a][b] ^= w[round * Nb + b][a];
+                state[row][col] ^= w[round * 4 + col][row];
             }
         }
         
@@ -136,12 +208,12 @@ var aes =
     */
     subBytes: function(state, Nb)
     {
-        for(var a = 0; a < 4; a++)
+        for(var row = 0; row < 4; row++)
         {
-            for(var b = 0; b < Nb; b++)
+            for(var col = 0; col < Nb; col++)
             {
                 // Substitution using the S-Box
-                state[a][b] = aes.sBox[state[a][b]];
+                state[row][col] = aes.sBox[state[row][col]];
             }
         }
         
@@ -158,20 +230,22 @@ var aes =
     */
     shiftRows: function(state, Nb)
     {
-        var temp = [0, 0, 0, 0];
+        var temp = new Array(4);
         
-        for(var a = 0; a < 4; a++)
+        for(var row = 1; row < 4; row++)
         {
-            for(var b = 0; b < Nb; b++)
-            {
-                temp[b] = s[a][(b + (a % Nb)) % Nb];
-            }
+            temp[0] = state[(row + 0) % 4][row];
+            temp[1] = state[(row + 1) % 4][row];
+            temp[2] = state[(row + 2) % 4][row];
+            temp[3] = state[(row + 3) % 4][row];
             
-            for(var b = 0; b < Nb; b++)
-            {
-                state[a][b] = temp[b];
-            }
+            state[0][row] = temp[0];
+            state[1][row] = temp[1];
+            state[2][row] = temp[2];
+            state[3][row] = temp[3];
         }
+        
+        return state;
     },
     
     /**
@@ -185,19 +259,19 @@ var aes =
     mixColumns: function(state, Nb)
     {
         // Copy of State array
-        var temp = [0, 0, 0, 0];
+        var temp = new Array(4);
         
-        for(var a = 0; a < Nb; a++)
+        for(var col = 0; col < Nb; col++)
         {
-            for(var b = 0; b < 4; b++)
+            for(var row = 0; row < 4; row++)
             {
-                t[b] = state[b][a];
+                temp[row] = state[row][col];
             }
             
-            for(var b = 0; b < 4; b++)
+            for(var row = 0; row < 4; row++)
             {
                 // ({02} • temp[b]) XOR ({03} • temp[b]) XOR temp[(b + 1) MOD 4] XOR temp[(b + 2) MOD 4] XOR temp[(b + 3) MOD 4]
-                state[b][a] = aes.FFmul(0x02, temp[b]) ^ aes.FFmul(0x03, temp[(b + 1) % 4] ^ temp[(b + 2) % 4] ^ temp[(b + 3) % 4];
+                state[row][col] = aes.FFmul(0x02, temp[row]) ^ aes.FFmul(0x03, temp[(row + 1) % 4]) ^ temp[(row + 2) % 4] ^ temp[(row + 3) % 4];
             }
         }
         
@@ -237,6 +311,149 @@ var aes =
         }
         
         return r;
+    },
+    
+    /**
+    * @name         : SubWord operation
+    * @description  : Apply S-Box to word
+    * @section      : §5.2
+    * @params       : w[Nb] : 4-bytes word
+    * @returns      : w[Nb] : New 4-bytes word
+    */
+    subWord: function(w)
+    {
+        for(var i = 0; i < aes.Nb; i++)
+        {
+            w[i] = aes.sBox[w[i]];
+        }
+        
+        return w;
+    },
+    
+    /**
+    * @name         : RotWord operation
+    * @description  : Rotate word
+    * @section      : §5.2
+    * @params       : w[Nb] : 4-bytes word
+    * @returns      : w[Nb] : New 4-bytes word
+    */
+    rotWord: function(w)
+    {
+        var temp = w;
+        
+        w[0] = temp[1];
+        w[1] = temp[2];
+        w[2] = temp[3];
+        w[3] = temp[0];
+        
+        return w;
+    },
+    
+    /**
+    * @name         : GetRandomValues operation
+    * @description  : Generate a random number
+    * @section      : /
+    * @params       : length : length of the vector (higher is better)
+    * @returns      : random number
+    */
+    getRandomValues: function(length)
+    {
+        var randomVector = new Array(length);
+        
+        for(var i = 0; i < length; i++)
+        {
+            randomVector[i] = Math.floor(Math.random() * 0xffff);
+        }
+        
+        return randomVector[(Math.random() * length)];
+    },
+    
+    actions:
+    {
+        encrypt: function(plaintext, password, bits)
+        {
+            // Escaping string to have a safe one
+            plaintext = unescape(encodeURIComponent(String(plaintext)));
+            password = unescape(encodeURIComponent(String(password)));
+            
+            // We'll generate key expansion thanks to plain password
+            var bytes = bits / 8;
+            var pBytes = new Array(bytes);
+            
+            for(var i = 0; i < bytes; i++)
+            {
+                pBytes[i] = (i < password.length) ? password.charCodeAt(i) : 0
+            }
+            
+            // Generate a 16/24/32 bytes long key
+            var key = aes.cipher(pBytes, aes.keyExpansion(pBytes));
+            key = key.concat(key.slice(0, bytes - 16));
+            
+            // Generate CounterBlock
+            var counterBlock = new Array(16);
+            
+            var nonce = Date.now();
+            var nonceM = nonce % 1000;
+            var nonceS = Math.floor(nonce / 1000);
+            var nonceR = aes.getRandomValues(32);
+            
+            for(var i = 0; i < 4; i++)
+            {
+                counterBlock[i] = (nonceS >>> i * 8) & 0xff;
+                counterBlock[i + 2] = (nonceR >>> i * 8) &0xff;
+                counterBlock[i + 4] = (nonceM >>> i * 8) & 0xff;
+            }
+            
+            // Converting counterBlock to string
+            var counterText = "";
+            
+            for(var i = 0; i < 8; i++)
+            {
+                counterText += String.fromCharCode(counterBlock[i]);
+            }
+            
+            // Generate key schedule
+            var keySchedule = aes.keyExpansion(key);
+            
+            var countBlock = Math.ceil(plaintext.length / 16);
+            var cipherText = "";
+            var block = 0;
+            
+            while(block < countBlock)
+            {
+                // Set counter in last 8 bytes of counterBlock
+                for(var i = 0; i < 4; i++)
+                {
+                    counterBlock[16 - 1 - i] = (block >>> i * 8) & 0xff;
+                    counterBlock[16 - 1 - i - 4] = (block / 0x100000000 >>> i * 8);
+                }
+                
+                // Encrypt counterBlock
+                var cipherCounter = aes.cipher(counterBlock, keySchedule);
+                
+                var blockLength = (block < countBlock - 1) ? 16 : (plaintext.length - 1)% 16 + 1;
+                var cipherChar = new Array(blockLength);
+                
+                for(var i = 0; i < blockLength; i++)
+                {
+                    cipherChar[i] = cipherCounter[i] ^ plaintext.charCodeAt(block * 16 + i);
+                    cipherChar[i] = String.fromCharCode(cipherChar[i]);
+                }
+                
+                cipherText += cipherChar.join("");
+                
+                block++;
+            }
+            
+            cipherText = counterText + cipherText;
+            
+            return window.btoa(cipherText);
+        },
+        
+        decrypt: function(ciphertext, password, bits)
+        {
+            
+        }
     }
 }
 || {};
