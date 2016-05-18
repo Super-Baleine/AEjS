@@ -78,8 +78,6 @@ var aes =
             state[i % 4][Math.floor(i / 4)] = input[i];
         }
         
-        console.log(state);
-        
         // First AddRoundKey() transformation [§5.1.4]
         state = aes.addRoundKey(state, w, 0, aes.Nb);
         
@@ -132,10 +130,6 @@ var aes =
         var Nk = key.length / 4;
         var Nr = Nk + 6;
         var w = new Array(aes.Nb * (Nr + 1));
-        
-        console.log("Nk : " + Nk);
-        console.log("Nr : " + Nr);
-        console.log("Nb : " + aes.Nb);
         
         for(var i = 0; i < Nk; i++)
         {
@@ -234,10 +228,10 @@ var aes =
         
         for(var row = 1; row < 4; row++)
         {
-            temp[0] = state[(row + 0) % 4][row];
-            temp[1] = state[(row + 1) % 4][row];
-            temp[2] = state[(row + 2) % 4][row];
-            temp[3] = state[(row + 3) % 4][row];
+            temp[0] = state[row][(row + 0) % 4];
+            temp[1] = state[row][(row + 1) % 4];
+            temp[2] = state[row][(row + 2) % 4];
+            temp[3] = state[row][(row + 3) % 4];
             
             state[0][row] = temp[0];
             state[1][row] = temp[1];
@@ -372,9 +366,15 @@ var aes =
     {
         encrypt: function(plaintext, password, bits)
         {
-            // Escaping string to have a safe one
-            plaintext = unescape(encodeURIComponent(String(plaintext)));
-            password = unescape(encodeURIComponent(String(password)));
+            // Testing key length
+            if(bits != 128 && bits != 192 && bits != 256)
+            {
+                throw new Error("Key size must 128/192/256 bits long");
+            }
+            
+            // Makes sure that's strings
+            plaintext = encodeURIComponent(unescape(String(plaintext)));
+            password = String(password);
             
             // We'll generate key expansion thanks to plain password
             var bytes = bits / 8;
@@ -417,9 +417,8 @@ var aes =
             
             var countBlock = Math.ceil(plaintext.length / 16);
             var cipherText = "";
-            var block = 0;
-            
-            while(block < countBlock)
+
+            for(var block = 0; block < countBlock; block++)
             {
                 // Set counter in last 8 bytes of counterBlock
                 for(var i = 0; i < 4; i++)
@@ -442,17 +441,110 @@ var aes =
                 
                 cipherText += cipherChar.join("");
                 
-                block++;
+                if(typeof WorkerGlobalScope != 'undefined' && self instanceof WorkerGlobalScope)
+                {
+                    if(block % 1000 == 0)
+                    {
+                        self.postMessage({ 
+                            action: "encryptFile",
+                            progress: block/countBlock * 100
+                        });
+                    }
+                }
             }
             
             cipherText = counterText + cipherText;
             
-            return window.btoa(cipherText);
+            // Return the cipherText in base64
+            return btoa(cipherText);
         },
         
-        decrypt: function(ciphertext, password, bits)
+        decrypt: function(cipherText, password, bits)
         {
+            // Testing key length
+            if(bits != 128 && bits != 192 && bits != 256)
+            {
+                throw new Error("Key size must 128/192/256 bits long");
+            }
             
+            // Decrypting from base64
+            cipherText = atob(cipherText);
+            
+            // Makes sure that's strings
+            password = String(password);
+            
+            // We'll generate key expansion thanks to plain password
+            var bytes = bits / 8;
+            var pBytes = new Array(bytes);
+            
+            for(var i = 0; i < bytes; i++)
+            {
+                pBytes[i] = (i < password.length) ? password.charCodeAt(i) : 0
+            }
+            
+            // Generate a 16/24/32 bytes long key
+            var key = aes.cipher(pBytes, aes.keyExpansion(pBytes));
+            key = key.concat(key.slice(0, bytes - 16));
+            
+            // Reconvering nonce from first 8 bytes of cipherText
+            var counterBlock = new Array(8);
+            var counterText = cipherText.slice(0, 8);
+            
+            for(var i = 0; i < 8; i++)
+            {
+                counterBlock[i] = counterText.charCodeAt(i);
+            }
+            
+            // Generating key schedule
+            var keySchedule = aes.keyExpansion(key);
+            
+            // Separating cipherText into blocks and skipping first 8 bytes of nonce
+            var blockCount = Math.ceil((cipherText.length - 8) / 16);
+            var cipher = new Array(blockCount);
+            
+            for(var block = 0; block < blockCount; block++)
+            {
+                cipher[block] = cipherText.slice(8 + block * blockCount, 8 + block * blockCount + 16);
+            }
+            
+            cipherText = cipher;
+            
+            // Plaintext will be show after decryption of cipherText
+            var plaintext = "";
+            
+            for(var block = 0; block < blockCount; block++)
+            {
+                for(var i = 0; i < 4; i++)
+                {
+                    counterBlock[16 - 1 - i] = (block >>> i * 8) & 0xff;
+                    counterBlock[16 - 1 - i - 4] = (((block + 1) / (0x100000000 - 1) >>> i * 8)) & 0xff;
+                }
+                
+                var cipherCounter = aes.cipher(counterBlock, keySchedule);
+                
+                var plainTextByte = new Array(cipherText[block].length);
+                
+                for(var i = 0; i < cipherText[block].length; i++)
+                {
+                    plainTextByte[i] = cipherCounter[i] ^ cipherText[block].charCodeAt(i);
+                    plainTextByte[i] = String.fromCharCode(plainTextByte[i]);
+                }
+                
+                plaintext += plainTextByte.join("");
+                
+                if(typeof WorkerGlobalScope != 'undefined' && self instanceof WorkerGlobalScope)
+                {
+                    if(block % 1000 == 0)
+                    {
+                        self.postMessage({ 
+                            action: "decryptFile",
+                            progress: block/blockCount * 100
+                        });
+                    }
+                }
+            }
+            
+            return plaintext;
         }
     }
 }
