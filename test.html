@@ -1,0 +1,83 @@
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <style>
+			progress 
+			{
+				display: inline-block;
+				
+				width: 100px;
+				height: 10px;
+				
+				border: none;
+				border-radius: 2px;
+			}
+			
+			progress::-moz-progress-bar
+			{
+				background: #09c;
+				
+				border-radius: 2px;
+			}
+            
+            progress.finish::-moz-progress-bar
+            {
+                background-color: forestgreen;
+            }
+		</style>
+    </head>
+    <body>
+        <input type="file" id="file" /><input type="button" value="Upload" onclick="encrypt();" /><br /><br />
+        <progress max="100" value="0"></progress>
+        
+        <script>
+            function encrypt()
+            {
+                var worker = new Worker("aeJs.worker.js");
+                
+                worker.postMessage({
+                    action: "encrypt",
+                    file: document.querySelector("#file").files[0],
+                    password: "aa",
+                    bits: 256
+                });
+                
+                worker.onmessage = function(content)
+                {
+                    switch(content.data.action)
+                    {
+                        case "loadFile":
+                            if(content.data.progress == "begin")
+                            {
+                                console.log("Loading file...");
+                            }
+                            else
+                            {
+                                console.log("Loading end...");
+                            }
+                            break;
+                            
+                        case "encryptFile":
+                            if(content.data.progress == "begin")
+                            {
+                                console.log("Encrypt file...");
+                            }
+                            else if(!isNaN(content.data.progress))
+                            {
+                                document.querySelector("progress").value = content.data.progress;
+                            }
+                            else
+                            {
+                                document.querySelector("progress").value = 100;
+                                document.querySelector("progress").className = "finish";
+                            }
+                            break;
+                            
+                        case "decryptFile":
+                            break;
+                    }
+                }
+            }
+        </script>
+    </body>
+</html>
