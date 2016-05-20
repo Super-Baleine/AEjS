@@ -42,7 +42,17 @@ worker.postMessage({
 
 ___Decrypt :___
 
-incoming...
+```javascript
+var keyLength = 256;
+var worker = new Worker("js/aeJs.worker.js");
+
+worker.postMessage({
+  action: "decrypt",
+  file: document.querySelector("#file").files[0], // Must be encrypt with AES-"keyLength" flavor
+  password: "My p@ssW0rD",
+  bits: keyLength
+});
+```
 
 ## License
 Apache 2.0
