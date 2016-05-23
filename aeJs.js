@@ -343,11 +343,18 @@ aes.actions.encrypt = function(plaintext, password, bits)
         throw new Error("Key size must 128/192/256 bits long");
     }
 
-    // Makes sure that's strings
-    plaintext = encodeURIComponent(unescape(String(plaintext)));
-    password = String(password);
+    // Escape string to have a "secure" one
+	plaintext = encodeURIComponent(String(plaintext)).replace(/[!'()*]/g, function(c)
+	{
+		return '%' + c.charCodeAt(0).toString(16);
+	});
+	
+	password = encodeURIComponent(String(password)).replace(/[!'()*]/g, function(c)
+	{
+		return '%' + c.charCodeAt(0).toString(16);
+	});
 
-    // We'll generate key expansion thanks to plain password
+    // We'll generate key expansion thanks to plain-password
     var bytes = bits / 8;
     var pBytes = new Array(bytes);
 
@@ -425,12 +432,14 @@ aes.actions.encrypt = function(plaintext, password, bits)
 
         if(typeof WorkerGlobalScope != 'undefined' && self instanceof WorkerGlobalScope)
         {
-            if(block % 50000 == 0)
+            if(block % 1000 == 0)
             {
                 self.postMessage({ 
                     action: "encryptFile",
                     progress: (countBlock - block)/countBlock * 100
                 });
+				
+				// console.log((countBlock - block)/countBlock * 100);
             }
         }
         
@@ -463,8 +472,11 @@ aes.actions.decrypt = function(cipherText, password, bits)
     // Decrypting from base64
     cipherText = atob(cipherText);
 
-    // Makes sure that's strings
-    password = String(password);
+    // Makes sure that's strings and escape it
+    password = encodeURIComponent(String(password)).replace(/[!'()*]/g, function(c)
+	{
+		return '%' + c.charCodeAt(0).toString(16);
+	});
 
     // We'll generate key expansion thanks to plain password
     var bytes = bits / 8;
@@ -527,7 +539,7 @@ aes.actions.decrypt = function(cipherText, password, bits)
 
         if(typeof WorkerGlobalScope != 'undefined' && self instanceof WorkerGlobalScope)
         {
-            if(block % 20000 == 0)
+            if(block % 1000 == 0)
             {
                 self.postMessage({ 
                     action: "decryptFile",
@@ -538,4 +550,4 @@ aes.actions.decrypt = function(cipherText, password, bits)
     }
 
     return plaintext;
-};
+}
