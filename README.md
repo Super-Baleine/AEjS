@@ -64,4 +64,4 @@ incoming...
 Feel free to contribute to the library ;)
 
 ## Tests
-A benchmark was did [here](https://github.com/quantacloud/core/wiki/Benchmarks) with a old computer.
+A benchmark was done [here](https://github.com/quantacloud/core/wiki/Benchmarks) with a old computer.
