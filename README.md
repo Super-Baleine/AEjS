@@ -61,7 +61,7 @@ Apache 2.0
 incoming...
 
 ## Contribution
-Feel free to contribute to the library ;)
+If you are a scientist, feel free to contribute ;)
 
 ## Tests
 A benchmark was done [here](https://github.com/quantacloud/core/wiki/Benchmarks) with a old computer.
